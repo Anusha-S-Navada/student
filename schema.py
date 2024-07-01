@@ -8,8 +8,14 @@ class grade(BaseModel):
 class stud(BaseModel):
     id : int
     name : str
-    grade : int
+    grade_id : int
     age : int
+
+class StudentWithTeacher(BaseModel):
+    student_name : str
+    gradename : str
+    teacher_name : str
+    teacher_qualification : str
     
 class stud_update(BaseModel):
     name: Optional[str] = None

@@ -20,8 +20,6 @@ class Teacher(Base):
     name = Column(String, index=True)
     qualification = Column(String)
     grade_id = Column(Integer, ForeignKey('grades.id'))
-    
-    classes = Column(Integer)
 
     grade = relationship("Grade", back_populates="teachers")
 
