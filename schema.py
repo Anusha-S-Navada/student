@@ -1,26 +1,27 @@
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
+from models import Student, Teacher
 
 class grade(BaseModel):
     id : int
     gradeName : str
+
 
 class stud(BaseModel):
     id : int
     name : str
     grade_id : int
     age : int
-
-class StudentWithTeacher(BaseModel):
-    student_name : str
-    gradename : str
-    teacher_name : str
-    teacher_qualification : str
     
+
 class stud_update(BaseModel):
     name: Optional[str] = None
-    grade: Optional[int] = None
+    grade_id: Optional[int] = None
     age: Optional[int] = None
+
+    class Config:
+        orm_mode = True
+
 
 class teach(BaseModel):
     id : int
@@ -28,7 +29,25 @@ class teach(BaseModel):
     qualification : str
     grade_id : int
 
+
 class teach_update(BaseModel):
     name: Optional[str] = None  
     qualification : Optional[str] 
     grade_id : Optional[int]
+
+    class Config:
+        orm_mode = True
+
+
+class StudentInfo(BaseModel):
+    id: int
+    name: str
+    age: int
+    grade_id: int
+
+
+class TeacherInfo(BaseModel):
+    id: int
+    name: str
+    qualification: str
+    grade_id: int
