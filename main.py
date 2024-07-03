@@ -1,3 +1,4 @@
+import datetime
 from fastapi import FastAPI,HTTPException,Depends
 from pydantic import BaseModel
 from typing import List,Annotated
@@ -28,6 +29,7 @@ def create_grade(grade : schema.grade, db: Session = Depends(get_db)):
     db.refresh(new_grade)
     return new_grade
 
+
 @app.delete('/del_grade/{id}', tags=["Grade"])
 def delete_grade(id:int, db:Session = Depends(get_db)):
     deleted_grade = db.query(models.Grade).filter(models.Grade.id == id).first()
@@ -53,12 +55,23 @@ def create_student(stud : schema.stud, db: Session = Depends(get_db)):
     return new_student
 
 
+@app.get('/allstudents/', tags=["Students"])
+def get_student(db: Session = Depends(get_db)):
+    student_info = db.query(models.Student).all()
+    return {"Student information": student_info}
+
+
 @app.get('/students/{id}', tags=["Students"])
 def get_student(id: int, db: Session = Depends(get_db)):
     student_info = db.query(models.Student).filter(models.Student.id == id).first()
     if student_info is None:
         raise HTTPException(status_code=404, detail="Student not found")
     return {"Student information": student_info}
+
+#Pagination
+@app.get("/students/",tags=["Students"])
+async def get_students(skip: int = 0, limit: int = 2, db: Session = Depends(get_db)):
+    return db.query(models.Student).offset(skip).limit(limit).all()
 
 
 @app.put('/stud/{id}', tags=["Students"])
@@ -103,11 +116,17 @@ def create_teacher(teaching : schema.teach, db: Session = Depends(get_db)):
     return new_teacher
 
 
+@app.get('/allteachers/', tags=["Teachers"])
+def get_teacher(db: Session = Depends(get_db)):
+    teacher_info = db.query(models.Teacher).all()
+    return {"Teacher information": teacher_info}
+
+
 @app.get('/teachers/{id}', tags=["Teachers"])
 def get_teacher(id: int, db: Session = Depends(get_db)):
     teacher_info = db.query(models.Teacher).filter(models.Teacher.id == id).first()
     if teacher_info is None:
-        raise HTTPException(status_code=404, detail="Student not found")
+        raise HTTPException(status_code=404, detail="Teacher not found")
     return {"Teacher information": teacher_info}
 
 
@@ -140,23 +159,25 @@ def delete_teacher(id:int, db:Session = Depends(get_db)):
 
 
 #getting students information using grade id
-@app.get("/students_by_grade/{grade_id}")
+@app.get("/students_by_grade/{grade_id}",tags=["retrieve"])
 def get_students_by_grade(grade_id: int, db: Session = Depends(get_db)):
     students = db.query(models.Student).filter(models.Student.grade_id == grade_id).all()
     if not students:
         raise HTTPException(status_code=404, detail="No students found for the specified grade")
     return students
 
+
 #getting teachers information using grade id
-@app.get("/teachers_by_grade/{grade_id}")
+@app.get("/teachers_by_grade/{grade_id}",tags=["retrieve"])
 def get_teachers_by_grade(grade_id: int, db: Session = Depends(get_db)):
     teachers = db.query(models.Teacher).filter(models.Teacher.grade_id == grade_id).all()
     if not teachers:
-        raise HTTPException(status_code=404, detail="No students found for the specified grade")
+        raise HTTPException(status_code=404, detail="No teacher found for the specified grade")
     return teachers
 
+
 #getting students and teachers information using grade id             
-@app.get("/grade_info/{grade_id}", response_model=dict)
+@app.get("/student_with_teacher/{grade_id}", response_model=dict,tags=["retrieve"])
 def get_grade_info(grade_id: int, db: Session = Depends(get_db)):
     grade_info = {}
 
@@ -186,14 +207,95 @@ def get_grade_info(grade_id: int, db: Session = Depends(get_db)):
 
 
 #counting total number of students in particular grade
-@app.get('/count_students/{grade_id}')
+@app.get('/count_students/{grade_id}', tags=["Count"])
 def count_students(grade_id: int, db: Session = Depends(get_db)):
     count = db.query(models.Student).filter(models.Student.grade_id == grade_id).count()
     return {"grade_id": grade_id, "Total_student_count": count}
 
 
 #counting total number of tudents in particular grade
-@app.get('/count_teachers/{grade_id}')
+@app.get('/count_teachers/{grade_id}',tags=["Count"])
 def count_teachers(grade_id: int, db: Session = Depends(get_db)):
     count = db.query(models.Teacher).filter(models.Teacher.grade_id == grade_id).count()
     return {"grade_id": grade_id,"Total_teachers_count": count}
+
+#Notification module
+def send_notification(id: int, content: str, recipient_type: str, recipient_id: int, event_type: Optional[str] = None, event_details: Optional[str] = None, db: Session = None):
+    notification = models.Notification(
+        id=id,
+        content=content,
+        recipient_type=recipient_type,
+        recipient_id=recipient_id,
+        event_type=event_type,
+        event_details=event_details
+    )
+    db.add(notification)
+    db.commit()
+
+#sending event notifications for one particular student/teacher
+@app.post('/send_event_notification', tags=["Notifications"])
+def send_event_notification(id:int,content: str, recipient_type: str, recipient_id: int, event_type: str, event_details: str, db: Session = Depends(get_db)):
+    if recipient_type not in ['student', 'teacher']:
+        raise HTTPException(status_code=400, detail="Recipient type must be 'student' or 'teacher'")
+    
+    #content based on event type
+    if event_type == 'holiday':
+        content = f"Upcoming holiday: {event_details}"
+    elif event_type == 'exam':
+        content = f"Upcoming exam : {event_details}"
+    elif event_type == 'event':
+        content = f"Event: {event_details}"
+    else:
+        content = "New notification"
+    
+    send_notification(id, content, recipient_type, recipient_id, event_type, event_details, db)
+    
+    return {"message": "Event notification sent successfully"}
+
+#function to retrieve notification information
+@app.get('/received_event_notification/{id}',tags=["Notifications"])
+def received_event_notification(id: int, db: Session = Depends(get_db)):
+    notification = db.query(models.Notification).filter(models.Notification.id == id).first()
+    if notification is None:
+        raise HTTPException(status_code=404, detail="notification not found")
+    return {"Notification information": notification}
+
+
+def send_notification_all(recipient_type: str, recipient_id: int, content: str, event_type: str, event_details: str, db: Session):
+    notification = models.Notification(
+        content=content,
+        recipient_type=recipient_type,
+        recipient_id=recipient_id,
+        event_type=event_type,
+        event_details=event_details
+    )
+    db.add(notification)
+    db.commit()
+
+#sending notification to one particular grade
+@app.post('/send_notification/{grade_id}', tags=["Notifications"])
+def send_grade_notification(grade_id: int, notification_request: schema.NotificationRequest, db: Session = Depends(get_db)):
+    # Validate event_type 
+    if notification_request.event_type not in ['holiday', 'exam', 'event']:
+        raise HTTPException(status_code=400, detail="Invalid event type. Must be one of 'holiday', 'exam', or 'event'")
+    
+    # Query students in the specified grade
+    students = db.query(models.Student).filter(models.Student.grade_id == grade_id).all()
+    
+    if not students:
+        raise HTTPException(status_code=404, detail=f"No students found for grade id {grade_id}")
+    
+    #prepare content based on event_type
+    content = notification_request.content
+    if notification_request.event_type == 'holiday':
+        content = f"Upcoming holiday: {notification_request.event_details}"
+    elif notification_request.event_type == 'exam':
+        content = f"Upcoming exam : {notification_request.event_details}"
+    elif notification_request.event_type == 'event':
+        content = f"Event: {notification_request.event_details}"
+    
+    #send notifications to each student
+    for student in students:
+        send_notification_all('student', student.id, content, notification_request.event_type, notification_request.event_details, db)
+    
+    return {"message": f"{len(students)} students in grade {grade_id} notified successfully"}

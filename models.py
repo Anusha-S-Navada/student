@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, String, Column,ForeignKey, Table
+from sqlalchemy import DateTime, Enum, Integer, String, Column,ForeignKey, Table
 from database import Base
 from sqlalchemy.orm import relationship
 
@@ -45,4 +45,15 @@ class Grade(Base):
 
     students = relationship("Student", back_populates="grade")
     teachers = relationship("Teacher", back_populates="grade")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(String, nullable=False)
+    recipient_type = Column(Enum('student', 'teacher', name='recipient_types'), nullable=False)
+    recipient_id = Column(Integer, nullable=False)
+    event_type = Column(Enum('holiday', 'exam', 'event', name='event_types'), nullable=True)
+    event_details = Column(String, nullable=True)
 

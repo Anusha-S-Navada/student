@@ -51,3 +51,17 @@ class TeacherInfo(BaseModel):
     name: str
     qualification: str
     grade_id: int
+
+
+class NotificationBase(BaseModel):
+    id : int
+    content: str
+    recipient_type: str
+    recipient_id: int
+    event_type: Optional[str]
+    event_details: Optional[str]
+
+class NotificationRequest(BaseModel):
+    content: str
+    event_type: str
+    event_details: str
