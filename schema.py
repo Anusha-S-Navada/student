@@ -1,6 +1,8 @@
+import re
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel,  EmailStr, validator
 from models import Student, Teacher
+from enum import Enum
 
 class grade(BaseModel):
     id : int
@@ -12,26 +14,33 @@ class stud(BaseModel):
     name : str
     grade_id : int
     age : int
+    email : EmailStr
+
+@validator('email')
+def validate_email(cls, v):
+    email_pattern = re.compile(r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+    if not email_pattern.match(v) or '..' in v or '@@' in v:
+        raise ValueError('Invalid email format')
+    return v
     
 
 class stud_update(BaseModel):
-    name: Optional[str] = None
+    name: str = None
     grade_id: Optional[int] = None
     age: Optional[int] = None
 
     class Config:
         orm_mode = True
 
-
 class teach(BaseModel):
     id : int
     name : str
     qualification : str
     grade_id : int
-
+    email : EmailStr
 
 class teach_update(BaseModel):
-    name: Optional[str] = None  
+    name: str   
     qualification : Optional[str] 
     grade_id : Optional[int]
 
@@ -65,3 +74,5 @@ class NotificationRequest(BaseModel):
     content: str
     event_type: str
     event_details: str
+
+

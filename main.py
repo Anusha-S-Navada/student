@@ -1,8 +1,8 @@
-import datetime
+import re
 from fastapi import FastAPI,HTTPException,Depends
 from pydantic import BaseModel
 from typing import List,Annotated
-import models, schema
+import models, schema, validation
 from database import engine,SessionLocal
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -23,6 +23,17 @@ def get_db():
 #Grade module
 @app.post("/grades/", tags=["Grade"])
 def create_grade(grade : schema.grade, db: Session = Depends(get_db)):
+
+    #checking grade_id is already existed or not
+    existing_grade_id = db.query(models.Grade).filter(models.Grade.id == grade.id).first()
+    if existing_grade_id:
+        raise HTTPException(status_code=400, detail="Grade ID already exists")
+
+    #Check if the grade name already exists
+    existing_grade_name = db.query(models.Grade).filter(models.Grade.gradeName == grade.gradeName).first()
+    if existing_grade_name:
+        raise HTTPException(status_code=400, detail="Grade name already exists")
+    
     new_grade = models.Grade(id = grade.id , gradeName=grade.gradeName)
     db.add(new_grade)
     db.commit()
@@ -42,11 +53,40 @@ def delete_grade(id:int, db:Session = Depends(get_db)):
 
 
 #CRUD operations on Student module
+
 @app.post("/students/", response_model=schema.stud, tags=["Students"])
 def create_student(stud : schema.stud, db: Session = Depends(get_db)):
+    
+    #student id should be unique
+    existing_student = db.query(models.Student).filter(models.Student.id == stud.id).first()
+    if existing_student:
+        raise HTTPException(status_code=400, detail="Student ID already exists and must be unique")
+    
+    #student id should be positive and integer
+    if not isinstance(stud.id, int) or stud.id <= 0:
+        raise HTTPException(status_code=400, detail="Student ID should be a positive integer")
+
+    #checks if name is more than 3 words
     if len(stud.name.strip()) < 3:
         raise HTTPException(status_code=400, detail="Name must be at least 3 characters long")
     
+    #checks if name is string 
+    if not stud.name.isalpha():
+        raise HTTPException(status_code=400, detail="Name can only contain alphabetic characters")
+    
+    #Checks if the grade ID existed or not
+    existing_grade = db.query(models.Grade).filter(models.Grade.id == stud.grade_id).first()
+    if not existing_grade:
+        raise HTTPException(status_code=400, detail="Grade ID not found")
+
+    #grade id must be provided
+    if not stud.grade_id:
+        raise HTTPException(status_code=400, detail="Grade ID is required")
+    
+    #checks if the age is more than 5
+    if not isinstance(stud.age, int) or stud.age < 6:
+        raise HTTPException(status_code=400, detail="Age should be more than 5 years")
+   
     stud.name = stud.name.capitalize()
     new_student = models.Student(**stud.dict())
     db.add(new_student)
@@ -68,17 +108,39 @@ def get_student(id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Student not found")
     return {"Student information": student_info}
 
+
 #Pagination
 @app.get("/students/",tags=["Students"])
 async def get_students(skip: int = 0, limit: int = 2, db: Session = Depends(get_db)):
+    if skip < 0 or limit <= 0:
+        raise HTTPException(status_code=400, detail="Skip and Limit must be positive integers")
     return db.query(models.Student).offset(skip).limit(limit).all()
 
 
 @app.put('/stud/{id}', tags=["Students"])
 def update_student(id: int, stud: schema.stud_update, db: Session = Depends(get_db)):
+    #check student id is existed or not
     updated_stud = db.query(models.Student).filter(models.Student.id == id).first()
     if updated_stud is None:
         raise HTTPException(status_code=404, detail="Student not found")
+
+    #check if all required fields are provided
+    if not (stud.name and stud.grade_id and stud.age):
+        raise HTTPException(status_code=400, detail="Name, grade_id, and age must be provided")
+    
+    #checks length of student name
+    if len(stud.name.strip()) < 3:
+        raise HTTPException(status_code=400,detail="Name should be atleast 3 letters")
+    
+    #checks name is string or not
+    if not stud.name.isalpha():
+        raise HTTPException(status_code=400, detail="Name can only contain alphabetic characters")
+
+    #Checks if the grade ID existed or not
+    existing_grade = db.query(models.Grade).filter(models.Grade.id == stud.grade_id).first()
+    if not existing_grade:
+        raise HTTPException(status_code=400, detail="Grade ID not found")
+
     
     if stud.name is not None:
         updated_stud.name = stud.name.capitalize()
@@ -105,9 +167,45 @@ def delete_student(id:int, db:Session = Depends(get_db)):
 #CRUD operations on Teachers module
 @app.post("/teachers/", response_model=schema.teach, tags=["Teachers"])
 def create_teacher(teaching : schema.teach, db: Session = Depends(get_db)):
+    #checks if name is more than 3 words
     if len(teaching.name.strip()) < 3:
         raise HTTPException(status_code=400, detail="Name must be at least 3 characters long")
+    
+    #checks if name is string 
+    if not teaching.name.isalpha():
+        raise HTTPException(status_code=400, detail="Name can only contain alphabetic characters")
+    
+    #checks if teachers id is unique
+    existing_teacher = db.query(models.Teacher).filter(models.Teacher.id == teaching.id).first()
+    if existing_teacher:
+        raise HTTPException(status_code=400, detail="Teacher ID already exists and must be unique")
+    
+    #teachers id should be positive and integer
+    if not isinstance(teaching.id, int) or teaching.id <= 0:
+        raise HTTPException(status_code=400, detail="Teacher ID should be a positive integer")
+    
+    #grade id must be provided
+    if not teaching.grade_id:
+        raise HTTPException(status_code=400, detail="Grade ID is required")
+    
+    #Checks if the grade ID existed or not
+    existing_grade = db.query(models.Grade).filter(models.Grade.id == teaching.grade_id).first()
+    if not existing_grade:
+        raise HTTPException(status_code=400, detail="Grade ID not found")
+    
+    # Validate qualification (case-insensitive)
+    valid_qualifications = {
+        "bsc b.ed": "BSc B.ed",
+        "msc m.ed": "MSc M.ed",
+        "bsc": "BSc",
+        "msc": "MSc"
+    }
+    qualification_lower = teaching.qualification.lower()
+    if qualification_lower not in valid_qualifications:
+        raise HTTPException(status_code=400, detail="Invalid Qualification, qualification should be 'BSc', 'MSc', 'BSc B.ed' or 'MSc M.ed'")
+    
     teaching.name = teaching.name.capitalize()
+    teaching.qualification = valid_qualifications[qualification_lower]
     new_teacher = models.Teacher(**teaching.dict())
     db.add(new_teacher)
     db.commit()
@@ -129,13 +227,42 @@ def get_teacher(id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Teacher not found")
     return {"Teacher information": teacher_info}
 
-
 @app.put('/teach/{id}', tags=["Teachers"])
 def update_teach(id: int, teach: Optional[schema.teach_update] = None, db: Session = Depends(get_db)):
+
     updated_teach = db.query(models.Teacher).filter(models.Teacher.id == id).first()
-    if updated_teach is None:
-        raise HTTPException(status_code=404, detail="Teacher not found")
+    if not updated_teach:
+        raise HTTPException(status_code=400, detail="Teacher ID not found")
     
+    #check if all required fields are provided
+    if not (teach.name and teach.grade_id and teach.qualification):
+        raise HTTPException(status_code=400, detail="Name, grade_id, and age must be provided")
+    
+    #checks if name is more than 3 words
+    if len(teach.name.strip()) < 3:
+        raise HTTPException(status_code=400, detail="Name must be at least 3 characters long")
+    
+    #checks if name is string 
+    if not teach.name.isalpha():
+        raise HTTPException(status_code=400, detail="Name can only contain alphabetic characters")
+
+    # Validate qualification (case-insensitive)
+    valid_qualifications = {
+        "bsc b.ed": "BSc B.ed",
+        "msc m.ed": "MSc M.ed",
+        "bsc": "BSc",
+        "msc": "MSc"
+    }
+    qualification_lower = teach.qualification.lower()
+    if qualification_lower not in valid_qualifications:
+        raise HTTPException(status_code=400, detail="Invalid Qualification, qualification should be 'BSc', 'MSc', 'BSc B.ed' or 'MSc M.ed'")
+    
+    #Checks if the grade ID existed or not
+    existing_grade = db.query(models.Grade).filter(models.Grade.id == teach.grade_id).first()
+    if not existing_grade:
+        raise HTTPException(status_code=400, detail="Grade ID not found")
+    
+
     if teach.name is not None:
         updated_teach.name = teach.name.capitalize()
     if teach.qualification is not None:
@@ -144,7 +271,7 @@ def update_teach(id: int, teach: Optional[schema.teach_update] = None, db: Sessi
         updated_teach.grade_id = teach.grade_id
     db.commit()
     db.refresh(updated_teach)
-    return {"message": "Teacher updated successfully", "Teacher information": updated_teach}
+    return {"message": "Teacher updated successfully", "Teacher information": updated_teach} 
 
 
 @app.delete('/del_teach/{id}', tags=["Teachers"])

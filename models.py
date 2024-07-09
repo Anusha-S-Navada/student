@@ -18,6 +18,7 @@ class Student(Base):
     name = Column(String, index = True)
     grade_id = Column(Integer, ForeignKey('grades.id'))
     age = Column(Integer)
+    email = Column(String, unique=True)
     
     grade = relationship("Grade", back_populates="students")
     teachers = relationship("Teacher", secondary=student_teacher, back_populates="students")
@@ -31,6 +32,7 @@ class Teacher(Base):
     name = Column(String, index=True)
     qualification = Column(String)
     grade_id = Column(Integer, ForeignKey('grades.id'))
+    email = Column(String, unique=True)
 
     grade = relationship("Grade", back_populates="teachers")
     students = relationship("Student", secondary=student_teacher, back_populates="teachers")
